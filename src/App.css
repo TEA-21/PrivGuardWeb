@@ -1,1 +1,95 @@
-/* App-level styles - intentionally minimal, main styles in index.css and components */
+/* ═══════════════════════════════════════════════════════════
+   APP GLOBAL — PrivGuard Web
+   ═══════════════════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #F3F4F6;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ── App shell ── */
+.app-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 480px;          /* mobile-app width cap */
+  margin: 0 auto;
+  background: #F3F4F6;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0,0,0,0.08);
+}
+
+.app-content {
+  flex: 1;
+  overflow: hidden;
+  /* Bottom padding so content isn't under the nav bar */
+  padding-bottom: 64px;
+}
+
+/* ── Bottom Nav Bar ── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  height: 64px;
+  background: #ffffff;
+  border-top: 1px solid #E2E8F0;
+  display: flex;
+  align-items: stretch;
+  z-index: 100;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px;
+  border: none; background: none; cursor: pointer;
+  font-family: inherit;
+  color: #94A3B8;
+  transition: color 0.2s;
+  padding: 6px 0 10px;
+  position: relative;
+}
+.bottom-nav-item::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 25%; right: 25%;
+  height: 2px;
+  background: #0C7FF2;
+  border-radius: 0 0 2px 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.bottom-nav-item.active { color: #0C7FF2; }
+.bottom-nav-item.active::before { opacity: 1; }
+.bottom-nav-item:hover:not(.active) { color: #64748B; }
+
+.bottom-nav-icon svg { width: 22px; height: 22px; }
+.bottom-nav-label {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* ── Scrollbar styling (webkit) ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 2px; }
+
+/* ── Responsive: desktop shows centered card ── */
+@media (min-width: 520px) {
+  body { background: #E2E8F0; }
+}
