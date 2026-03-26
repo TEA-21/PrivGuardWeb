@@ -1,11 +1,12 @@
-import React, { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './GalleryScreen.css';
 
 // --- SVG ICON COMPONENTS ---
-const ShieldIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+const CloudUploadIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+    <path d="M12 12v9" /><path d="m16 16-4-4-4 4" />
   </svg>
 );
 const SearchIcon = () => (
@@ -118,11 +119,11 @@ function GalleryScreen() {
   const [mediaItems, setMediaItems] = useState(DEFAULT_ITEMS);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortAscending, setSortAscending] = useState(true);
-  const [showAddOptions, setShowAddOptions] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [sheetItem, setSheetItem] = useState(null);
   const [toast, setToast] = useState(null);
   const [textPostDialog, setTextPostDialog] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   // Toast Helper
   const showToast = useCallback((msg) => {
@@ -184,15 +185,26 @@ function GalleryScreen() {
       return sortAscending ? aKey.localeCompare(bKey) : bKey.localeCompare(aKey);
     });
 
-  // --- FAB actions ---
-  const handleUploadClick = () => {
-    setShowAddOptions(false);
-    fileInputRef.current?.click();
+  // --- Drag & Drop ---
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
+    else if (e.type === 'dragleave') setDragActive(false);
   };
 
-  const handleTextPostClick = () => {
-    setShowAddOptions(false);
-    setTextPostDialog(true);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files?.length) {
+      handleFileSelect({ target: { files: e.dataTransfer.files, value: '' } });
+    }
+  };
+
+  // --- Upload/Post actions ---
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const submitTextPost = () => {
@@ -260,13 +272,7 @@ function GalleryScreen() {
 
   return (
     <div className="gallery-screen">
-      {/* App Bar */}
-      <div className="gallery-appbar">
-        <ShieldIcon />
-        <span className="gallery-appbar-title">PrivGuard</span>
-      </div>
-
-      {/* Header */}
+      {/* Header row: title + search + actions */}
       <div className="gallery-header">
         <h1 className="gallery-title">Gallery</h1>
         <div className="gallery-toolbar">
@@ -284,10 +290,30 @@ function GalleryScreen() {
               </button>
             )}
           </div>
-          <button className="sort-btn" onClick={() => setSortAscending(!sortAscending)}>
+          <button className="sort-btn" onClick={() => setSortAscending(!sortAscending)} title={sortAscending ? 'Sort Z→A' : 'Sort A→Z'}>
             {sortAscending ? <SortAscIcon /> : <SortDescIcon />}
           </button>
+          <button className="header-action-btn" onClick={handleUploadClick}>
+            <UploadIcon /> <span>Upload</span>
+          </button>
+          <button className="header-action-btn secondary" onClick={() => setTextPostDialog(true)}>
+            <TextPostIcon /> <span>New Post</span>
+          </button>
         </div>
+      </div>
+
+      {/* Drag & Drop Zone */}
+      <div
+        className={`drop-zone${dragActive ? ' active' : ''}`}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+        onClick={handleUploadClick}
+      >
+        <CloudUploadIcon />
+        <p className="drop-zone-title">Drop images here or click to browse</p>
+        <p className="drop-zone-sub">Supports PNG, JPG, GIF — multiple files allowed</p>
       </div>
 
       {/* Main Grid */}
@@ -340,25 +366,7 @@ function GalleryScreen() {
         onChange={handleFileSelect}
       />
 
-      {/* FAB (Floating Action Button) */}
-      {showAddOptions && <div className="fab-backdrop" onClick={() => setShowAddOptions(false)} />}
-      <div className="fab-container">
-        {showAddOptions && (
-          <>
-            <div className="fab-option">
-              <span className="fab-label">Upload Image</span>
-              <button className="fab-mini" onClick={handleUploadClick}><UploadIcon /></button>
-            </div>
-            <div className="fab-option">
-              <span className="fab-label">New Post</span>
-              <button className="fab-mini" onClick={handleTextPostClick}><TextPostIcon /></button>
-            </div>
-          </>
-        )}
-        <button className={`fab-main${showAddOptions ? ' open' : ''}`} onClick={() => setShowAddOptions(!showAddOptions)}>
-          <PlusIcon />
-        </button>
-      </div>
+      {/* Hidden file input */}
 
       {/* Full Preview Modal */}
       {selectedItem && (
