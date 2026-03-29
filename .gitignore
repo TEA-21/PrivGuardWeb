@@ -22,3 +22,25 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- Pre-Push Security & Cache Bounds ---
+# Javascript build and module bounds natively
+node_modules/
+dist/
+dist-ssr/
+build/
+
+# Python Virtual environments securely mapped
+venv/
+.venv/
+env/
+
+# Python caching systems specifically mapped
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local configuration boundaries (CRITICAL SECRET SWEEP)
+.env
+.env.local
+.env.*.local

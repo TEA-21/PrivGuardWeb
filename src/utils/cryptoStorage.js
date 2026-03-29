@@ -119,43 +119,44 @@ export async function encryptAndSaveItem(id, dataObj) {
 }
 
 export async function loadAllEncryptedItems() {
-  const items = [];
   try {
     const key = await getKey();
     const dec = new TextDecoder();
 
+    const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
         const storageKey = localStorage.key(i);
-        if (!storageKey.startsWith('privguard_item_')) continue;
+        if (storageKey.startsWith('privguard_item_')) {
+            keys.push(storageKey);
+        }
+    }
 
+    const itemsList = await Promise.all(keys.map(async (storageKey) => {
         const base64Data = localStorage.getItem(storageKey);
         try {
             const buffer = base64ToArrayBuffer(base64Data);
             const combined = new Uint8Array(buffer);
-            if (combined.length < 12) continue; // Invalid data
+            if (combined.length < 12) return null; // Invalid data
             
             const iv = combined.slice(0, 12);
             const ciphertext = combined.slice(12);
 
             const decryptedBuffer = await window.crypto.subtle.decrypt(
-                {
-                    name: 'AES-GCM',
-                    iv: iv
-                },
+                { name: 'AES-GCM', iv: iv },
                 key,
                 ciphertext
             );
 
             const jsonStr = dec.decode(decryptedBuffer);
-            items.push(JSON.parse(jsonStr));
+            return JSON.parse(jsonStr);
         } catch (e) {
             console.warn(`Failed to decrypt item ${storageKey}, skipping.`, e);
-            // We do not delete it, in case it was a transient error or they are waiting for a different session
+            return null;
         }
-    }
+    }));
 
-    // Sort by id descending
-    return items.sort((a, b) => b.id - a.id);
+    // Sort by id descending natively applying filter to natively drop purely null mappings
+    return itemsList.filter(Boolean).sort((a, b) => b.id - a.id);
   } catch (e) {
     console.error('Failed to load items', e);
     return [];

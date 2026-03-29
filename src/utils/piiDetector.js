@@ -1,7 +1,6 @@
 import { scanTextForPII } from './piiScanner';
 
-const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
-const SYSTEM_PROMPT = `You are a privacy risk analyzer. Given text, identify ALL personally identifiable information (PII) and sensitive data. Return ONLY a JSON array. Each item: { "type": string, "value": string, "risk": "high"|"medium"|"low", "reason": string }. Types include: name, email, phone, address, financial, health, biometric, credentials, location, relationship, employment, legal, behavioral. If no PII found, return [].`;
+
 
 function getRiskWeight(riskLevel) {
   switch (riskLevel?.toLowerCase()) {
@@ -51,68 +50,29 @@ export async function detectPII(text) {
 
   let aiEntities = [];
   
-  // 2. Run Claude API (async)
-  const apiKey = import.meta.env.VITE_CLAUDE_API_KEY;
-  if (apiKey) {
-    try {
-      const response = await fetch(CLAUDE_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514', // Using exact model from prompt
-          max_tokens: 1024,
-          system: SYSTEM_PROMPT,
-          messages: [
-            { role: 'user', content: text }
-          ]
-        })
-      });
+  // 2. Run Local Backend (async)
+  try {
+    const response = await fetch('http://localhost:8000/scan-text', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text })
+    });
 
-      if (response.ok) {
+    if (response.ok) {
         const data = await response.json();
-        let content = data.content[0]?.text || '[]';
-        
-        // Sometimes Claude wraps the JSON in markdown blocks
-        if (content.includes('\`\`\`json')) {
-            content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-        } else if (content.includes('\`\`\`')) {
-            content = content.replace(/\`\`\`/g, '').trim();
-        }
-
-        try {
-          const parsed = JSON.parse(content);
-          if (Array.isArray(parsed)) {
-            aiEntities = parsed.map(item => {
-              const val = typeof item.value === 'string' ? item.value : (typeof item.content === 'string' ? item.content : (typeof item.masked === 'string' ? item.masked : ''));
-              let idx = val ? text.indexOf(val) : -1;
-              if (idx === -1 && val) {
-                  idx = text.toLowerCase().indexOf(val.toLowerCase());
-              }
-              return {
+        if (data.entities && Array.isArray(data.entities)) {
+            aiEntities = data.entities.map(item => ({
                 ...item,
-                value: val,
-                source: 'ai',
-                riskWeight: getRiskWeight(item.risk),
-                index: idx
-              };
-            }).filter(item => item.index !== -1); // only keep if found in text
-          }
-        } catch (parseError) {
-          console.error("Failed to parse Claude output:", content);
+                source: 'ml-backend'
+            }));
         }
-      } else {
-        console.error("Claude API Error:", response.status, await response.text());
-      }
-    } catch (networkError) {
-      console.error("Network error reaching Claude API:", networkError);
+    } else {
+        console.error("Local Backend API Error:", response.status);
     }
-  } else {
-    console.warn("No VITE_CLAUDE_API_KEY found. Skipping AI detection.");
+  } catch (networkError) {
+      console.error("Network error reaching Local Backend API:", networkError);
   }
 
   // 3. Merge and deduplicate
@@ -121,13 +81,10 @@ export async function detectPII(text) {
   for (const ai of aiEntities) {
     // Check if duplicate
     const isDuplicate = mergedEntities.find(re => {
-      // Check for overlap in indices
+      // Check for overlap in indices properly (< not <= for bounds)
       const reEnd = re.index + (re.value ? re.value.length : 10);
       const aiEnd = ai.index + ai.value.length;
-      const overlaps = (ai.index >= re.index && ai.index <= reEnd) || 
-                       (aiEnd >= re.index && aiEnd <= reEnd) ||
-                       (ai.index <= re.index && aiEnd >= reEnd);
-      return overlaps;
+      return Math.max(ai.index, re.index) < Math.min(aiEnd, reEnd);
     });
 
     if (isDuplicate) {
@@ -181,4 +138,34 @@ export async function detectPII(text) {
     riskLevel,
     suggestions
   };
+}
+
+export async function scanImageWithML(fileOrBlob) {
+  try {
+    const formData = new FormData();
+    formData.append('image', fileOrBlob, 'upload.jpg');
+
+    const response = await fetch('http://localhost:8000/scan-image', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+        console.warn("Backend ML Scan returned error:", response.status);
+        return { entities: [], riskScore: 0, riskLevel: 'Clean', suggestions: ['Backend ML service unavailable or failed.'] };
+    }
+
+    const data = await response.json();
+    return {
+        entities: data.entities || [],
+        riskScore: data.riskScore || 0,
+        riskLevel: data.riskLevel || 'Clean',
+        suggestions: data.suggestions || [],
+        facesDetected: data.facesDetected || 0,
+        extractedText: data.extractedText || ''
+    };
+  } catch (error) {
+    console.warn("Failed to reach Local ML Backend:", error);
+    return { entities: [], riskScore: 0, riskLevel: 'Clean', suggestions: ['Failed to connect to Local ML Backend on port 8000.'] };
+  }
 }

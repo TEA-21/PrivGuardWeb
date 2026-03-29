@@ -1,0 +1,12 @@
+# Python Virtual environments natively mapped
+venv/
+.venv/
+env/
+
+# Python caching boundaries correctly evaluated
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets 
+.env

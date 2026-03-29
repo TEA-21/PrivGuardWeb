@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import { encryptAndSaveItem, loadAllEncryptedItems, deleteEncryptedItem, clearAllEncryptedItems } from '../utils/cryptoStorage';
-import { detectPII } from '../utils/piiDetector';
+import { detectPII, scanImageWithML } from '../utils/piiDetector';
 import './GalleryScreen.css';
 
 // --- SVG ICON COMPONENTS ---
@@ -56,21 +56,13 @@ const UploadIcon = () => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
   </svg>
 );
-const EditIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-);
+
 const TextPostIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
   </svg>
 );
-const PlusIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
+
 const CloseIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -86,16 +78,7 @@ const DeleteIcon = () => (
     <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
   </svg>
 );
-const NoteIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
-  </svg>
-);
-const MoreIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" />
-  </svg>
-);
+
 const ShieldCheckIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 32, height: 32 }}>
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
@@ -108,7 +91,7 @@ const WarningIcon = () => (
 );
 
 // ─── Inline PII Highlight Overlay ──────────────────────────────────────────
-function PiiHighlightOverlay({ text, entities }) {
+export function PiiHighlightOverlay({ text, entities }) {
   if (!text || !entities || !entities.length) return <span>{text}</span>;
 
   const sorted = [...entities]
@@ -118,22 +101,27 @@ function PiiHighlightOverlay({ text, entities }) {
   const parts = [];
   let lastIdx = 0;
 
-  for (const entity of sorted) {
+  for (let i = 0; i < sorted.length; i++) {
+    const entity = sorted[i];
     if (!entity) continue;
-    const start = parseInt(entity.index, 10);
+    let start = parseInt(entity.index, 10);
     if (isNaN(start)) continue;
     const len = entity.value ? entity.value.length : (entity.masked ? entity.masked.length : 0);
     if (len === 0) continue;
     
-    const end = start + len;
-    if (start < lastIdx) continue; // Overlap
+    let end = start + len;
+    // Adjust start index to render consecutive/overlapping highlights properly 
+    if (start < lastIdx) {
+      start = lastIdx;
+    }
+    if (start >= end) continue; // Skip if fully overlapped
 
     if (start > lastIdx) {
-      parts.push(<span key={`t-${lastIdx}`} className="pii-overlay-plain">{text.slice(lastIdx, start)}</span>);
+      parts.push(<span key={`t-${lastIdx}-${start}`} className="pii-overlay-plain">{text.slice(lastIdx, start)}</span>);
     }
 
     parts.push(
-      <span key={`m-${start}`} className="pii-overlay-match" title={`${entity.type} [${entity.source || 'regex'}]`}>
+      <span key={`m-${start}-${end}-${i}`} className="pii-overlay-match" title={`${entity.type} [${entity.source || 'regex'}]`}>
         <span className={`pii-overlay-text risk-${entity.risk || 'low'}`}>{text.slice(start, end)}</span>
       </span>
     );
@@ -156,7 +144,7 @@ function getRiskColor(score) {
 }
 
 function GalleryScreen() {
-  const navigate = useNavigate();
+
   const fileInputRef = useRef(null);
   const textPostRef = useRef(null);
 
@@ -300,48 +288,46 @@ function GalleryScreen() {
     }
   };
 
-  const handleEditCaption = async (item) => {
-    setSheetItem(null);
-    const newCaption = prompt('Image caption:', item.caption || '');
-    if (newCaption !== null) {
-      const updated = { ...item, caption: newCaption.trim() };
-      await encryptAndSaveItem(updated.id, updated);
-      setMediaItems((prev) =>
-        prev.map((i) => (i.id === item.id ? updated : i))
-      );
-      showToast('Caption updated');
-    }
-  };
 
-  const handleEditText = async (item) => {
-    setSheetItem(null);
-    const newText = prompt('Edit text post:', item.text || '');
-    if (newText !== null && newText.trim()) {
-      const updated = {
-          ...item,
-          text: newText.trim(),
-          title: newText.trim().length > 20 ? newText.trim().substring(0, 20) + '...' : newText.trim(),
-      };
-      await encryptAndSaveItem(updated.id, updated);
-      setMediaItems((prev) => prev.map((i) => i.id === item.id ? updated : i));
-      showToast('Text updated');
-    }
-  };
 
   const handleItemClick = async (item) => {
     setSelectedItem(item);
     setSheetItem(null);
     setScanResults(null);
     
-    const textToScan = item.type === 'image' ? (item.caption || '') : (item.text || '');
-    if (!textToScan.trim()) {
-      setScanResults({ entities: [], riskScore: 0, riskLevel: 'Clean', suggestions: [] });
-      return;
+    setIsScanningPII(true);
+
+    if (item.type === 'image') {
+      try {
+        // Convert the dataURL back into a Native Byte Blob to upload natively to Python
+        // Manually decode Base64 to guarantee a pure binary Blob instead of relying on fetch()
+        const dataUrlParts = item.dataUrl.split(',');
+        const byteString = atob(dataUrlParts[1]);
+        const mimeString = dataUrlParts[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        
+        // Scan with Local Machine Learning Backend over Port 8000
+        const results = await scanImageWithML(blob);
+        setScanResults(results);
+      } catch (e) {
+        console.error("Local ML Backend Error", e);
+        setScanResults({ entities: [], riskScore: 0, riskLevel: 'Clean', suggestions: ['Local ML Backend connection failed.'] });
+      }
+    } else {
+      const textToScan = item.text || '';
+      if (!textToScan.trim()) {
+        setScanResults({ entities: [], riskScore: 0, riskLevel: 'Clean', suggestions: [] });
+      } else {
+        const results = await detectPII(textToScan);
+        setScanResults(results);
+      }
     }
 
-    setIsScanningPII(true);
-    const results = await detectPII(textToScan);
-    setScanResults(results);
     setIsScanningPII(false);
   };
 
@@ -500,8 +486,17 @@ function GalleryScreen() {
                               </div>
                           </div>
 
-                          {scanResults.entities.length > 0 ? (
+                          {(scanResults.entities && scanResults.entities.length > 0) || scanResults.facesDetected > 0 ? (
                               <div className="ss-pii-list" style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                                  
+                                  {/* Face Component Warning Output */}
+                                  {scanResults.facesDetected > 0 && (
+                                    <div className="face-warning" style={{background: '#fff0f2', border: '1px solid #ffe4e6', padding: 12, borderRadius: 8, color: '#e11d48', display: 'flex', alignItems: 'center', gap: 8}}>
+                                        <WarningIcon />
+                                        <strong style={{fontSize: 13}}>Warning: {scanResults.facesDetected} Human Face(s) natively mapped in image payload.</strong>
+                                    </div>
+                                  )}
+
                                   {scanResults.entities.map((entity, i) => (
                                       <div className="ss-pii-card" key={i} style={{background: '#fff', border: '1px solid #e2e8f0', padding: 12, borderRadius: 8}}>
                                           <div className="ss-pii-body" style={{display: 'flex', flexDirection: 'column', gap: 4}}>

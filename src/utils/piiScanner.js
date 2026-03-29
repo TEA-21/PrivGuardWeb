@@ -123,7 +123,6 @@ export function scanTextForPII(text) {
   }
 
   const entities = [];
-  const seenValues = new Set(); // avoid duplicates
 
   for (const pattern of PII_PATTERNS) {
     // Reset regex lastIndex for global flag
@@ -136,11 +135,7 @@ export function scanTextForPII(text) {
       // Run optional extra validation
       if (pattern.validate && !pattern.validate(value)) continue;
 
-      // Deduplicate by normalized value
-      const normalizedKey = pattern.type + ':' + value.toLowerCase().replace(/[\s-]/g, '');
-      if (seenValues.has(normalizedKey)) continue;
-      seenValues.add(normalizedKey);
-
+      // Removed deduplication here to ensure EVERY occurrence gets highlighted
       entities.push({
         type: pattern.type,
         value,
@@ -156,9 +151,10 @@ export function scanTextForPII(text) {
   const riskScore = Math.min(rawScore, 100);
   const riskLevel = getRiskLevel(riskScore);
 
-  // Build human-readable risk list
-  const detectedRisks = entities.length
-    ? entities.map((e) => `${e.type} detected: ${e.masked}`)
+  // Build human-readable risk list (deduplicate UI display)
+  const uniqueRisks = [...new Set(entities.map((e) => `${e.type} detected: ${e.masked}`))];
+  const detectedRisks = uniqueRisks.length
+    ? uniqueRisks
     : ['No personally identifiable information detected in this content'];
 
   // Build suggestions

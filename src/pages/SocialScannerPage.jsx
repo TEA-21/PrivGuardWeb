@@ -82,22 +82,27 @@ function PiiHighlightOverlay({ text, entities }) {
   const parts = [];
   let lastIdx = 0;
 
-  for (const entity of sorted) {
+  for (let i = 0; i < sorted.length; i++) {
+    const entity = sorted[i];
     if (!entity) continue;
-    const start = parseInt(entity.index, 10);
+    let start = parseInt(entity.index, 10);
     if (isNaN(start)) continue;
     const len = entity.value ? entity.value.length : (entity.masked ? entity.masked.length : 0);
     if (len === 0) continue;
     
-    const end = start + len;
-    if (start < lastIdx) continue; // Overlap
+    let end = start + len;
+    // Adjust start index to render consecutive/overlapping highlights properly 
+    if (start < lastIdx) {
+      start = lastIdx;
+    }
+    if (start >= end) continue; // Skip if fully overlapped
 
     if (start > lastIdx) {
-      parts.push(<span key={`t-${lastIdx}`} className="pii-overlay-plain">{text.slice(lastIdx, start)}</span>);
+      parts.push(<span key={`t-${lastIdx}-${start}`} className="pii-overlay-plain">{text.slice(lastIdx, start)}</span>);
     }
 
     parts.push(
-      <span key={`m-${start}`} className="pii-overlay-match" title={`${entity.type} [${entity.source || 'regex'}]`}>
+      <span key={`m-${start}-${end}-${i}`} className="pii-overlay-match" title={`${entity.type} [${entity.source || 'regex'}]`}>
         <span className={`pii-overlay-text risk-${entity.risk || 'low'}`}>{text.slice(start, end)}</span>
       </span>
     );
