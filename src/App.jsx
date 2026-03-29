@@ -83,7 +83,7 @@ function AppInner() {
         </Routes>
       </main>
       <footer className="app-footer">
-        © 2024 PrivGuard — Your Privacy Guardian
+        © 2026 PrivGuard — Your Privacy Guardian
       </footer>
     </div>
   );

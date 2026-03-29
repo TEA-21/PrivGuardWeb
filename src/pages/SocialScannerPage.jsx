@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { detectPII } from '../utils/piiDetector';
 import { scanTextForPII } from '../utils/piiScanner';
 import './SocialScannerPage.css';
 
@@ -68,6 +69,48 @@ function Toggle({ checked, onChange }) {
   );
 }
 
+// ─── Regular Icons omitted for brevity, keeping existing ───
+
+// ─── Inline PII Highlight Overlay ──────────────────────────────────────────
+function PiiHighlightOverlay({ text, entities }) {
+  if (!text || !entities || !entities.length) return <span>{text}</span>;
+
+  const sorted = [...entities]
+    .filter(e => e.index != null)
+    .sort((a, b) => a.index - b.index);
+
+  const parts = [];
+  let lastIdx = 0;
+
+  for (const entity of sorted) {
+    if (!entity) continue;
+    const start = parseInt(entity.index, 10);
+    if (isNaN(start)) continue;
+    const len = entity.value ? entity.value.length : (entity.masked ? entity.masked.length : 0);
+    if (len === 0) continue;
+    
+    const end = start + len;
+    if (start < lastIdx) continue; // Overlap
+
+    if (start > lastIdx) {
+      parts.push(<span key={`t-${lastIdx}`} className="pii-overlay-plain">{text.slice(lastIdx, start)}</span>);
+    }
+
+    parts.push(
+      <span key={`m-${start}`} className="pii-overlay-match" title={`${entity.type} [${entity.source || 'regex'}]`}>
+        <span className={`pii-overlay-text risk-${entity.risk || 'low'}`}>{text.slice(start, end)}</span>
+      </span>
+    );
+    lastIdx = end;
+  }
+
+  if (lastIdx < text.length) {
+    parts.push(<span key={`t-${lastIdx}`} className="pii-overlay-plain">{text.slice(lastIdx)}</span>);
+  }
+
+  return <div className="pii-overlay-container">{parts}</div>;
+}
+
 // ─── Risk color helper ─────────────────────────────────────────────────────
 function getRiskColor(score) {
   if (score >= 80) return '#DC2626';
@@ -91,6 +134,15 @@ export default function SocialScannerPage() {
   const [scanResults, setScanResults] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
 
+  const liveRegexEntities = useMemo(() => {
+    if (!scanText.trim()) return [];
+    try {
+      return scanTextForPII(scanText).entities;
+    } catch {
+      return [];
+    }
+  }, [scanText]);
+
   function validate() {
     const e = {};
     if (!handle.trim()) e.handle = 'Please enter your social media handle';
@@ -112,15 +164,12 @@ export default function SocialScannerPage() {
     setEmail('');
   }
 
-  function handleScan() {
+  async function handleScan() {
     if (!scanText.trim()) return;
     setIsScanning(true);
-    // Small delay to show scanning animation
-    setTimeout(() => {
-      const result = scanTextForPII(scanText);
-      setScanResults(result);
-      setIsScanning(false);
-    }, 600);
+    const result = await detectPII(scanText);
+    setScanResults(result);
+    setIsScanning(false);
   }
 
   function clearScan() {
@@ -177,13 +226,26 @@ export default function SocialScannerPage() {
 
         <div className="ss-section-label">Content to Scan</div>
 
-        <textarea
-          className="ss-scan-textarea"
-          placeholder="Paste your social media post, bio, or any text here... For example: My email is john@example.com and my phone is 555-123-4567"
-          value={scanText}
-          onChange={(e) => { setScanText(e.target.value); setScanResults(null); }}
-          rows={6}
-        />
+        <div className="ss-scan-input-wrapper" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <textarea
+            className="ss-scan-textarea"
+            placeholder="Paste your social media post, bio, or any text here... For example: My email is john@example.com and my phone is 555-123-4567"
+            value={scanText}
+            onChange={(e) => { setScanText(e.target.value); setScanResults(null); }}
+            rows={6}
+          />
+          
+          {scanText.trim().length > 0 && (
+            <div className="ss-pii-preview-strip" style={{
+              display: liveRegexEntities.length > 0 && !scanResults ? 'block' : 'none'
+            }}>
+              <div className="ss-pii-preview-header">
+                <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>.*</span> Preliminary Regex Check
+              </div>
+              <PiiHighlightOverlay text={scanText} entities={liveRegexEntities} />
+            </div>
+          )}
+        </div>
 
         <div className="ss-scan-actions">
           <button
@@ -194,11 +256,11 @@ export default function SocialScannerPage() {
             {isScanning ? (
               <>
                 <span className="ss-btn-spinner" />
-                Scanning...
+                Scanning Deeply (Regex + AI)...
               </>
             ) : (
               <>
-                <ScanIcon /> Scan for PII
+                <ScanIcon /> Execute Advanced PII Deep Scan (Regex+AI)
               </>
             )}
           </button>
@@ -230,6 +292,9 @@ export default function SocialScannerPage() {
             {/* Entities found — warning cards */}
             {scanResults.entities.length > 0 ? (
               <>
+                <div className="ss-section-label" style={{ marginTop: 4 }}>Highlighted Text</div>
+                <PiiHighlightOverlay text={scanText} entities={scanResults.entities} />
+
                 <div className="ss-section-label" style={{ marginTop: 4 }}>Detected PII</div>
                 <div className="ss-pii-list">
                   {scanResults.entities.map((entity, i) => (
@@ -237,13 +302,14 @@ export default function SocialScannerPage() {
                       <div className="ss-pii-icon">
                         <WarningIcon />
                       </div>
-                      <div className="ss-pii-body">
-                        <span className="ss-pii-type">{entity.type}</span>
-                        <code className="ss-pii-masked">{entity.masked}</code>
+                      <div className="ss-pii-body" style={{gap: 4}}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="ss-pii-type">{entity.type}</span>
+                            <span className={`source-tag ${entity.source}`}>[{entity.source}]</span>
+                        </div>
+                        <code className="ss-pii-masked" style={{padding: '4px 6px', fontSize: 13, background: '#f1f5f9'}}>{entity.masked || entity.value}</code>
+                        {entity.reason && <p className="entity-reason" style={{margin: 0, marginTop: 4, fontSize: 13, color: '#64748b'}}>{entity.reason}</p>}
                       </div>
-                      <span className="ss-pii-weight" style={{ color: riskColor }}>
-                        +{entity.riskWeight}
-                      </span>
                     </div>
                   ))}
                 </div>
@@ -271,7 +337,7 @@ export default function SocialScannerPage() {
       </div>
 
       {/* ─── Right Column: Account Report Form ─── */}
-      <div className="ss-card-wrapper">
+      <div className="ss-card-wrapper" style={{ display: 'flex', flexDirection: 'column' }}>
         <div className="ss-hero" style={{ paddingBottom: 4 }}>
           <div className="ss-hero-icon" style={{ width: 56, height: 56 }}>
             <SecurityIcon />
@@ -333,6 +399,8 @@ export default function SocialScannerPage() {
             <Toggle checked={pushNotif} onChange={setPushNotif} />
           </div>
         </div>
+        
+        <div className="ss-right-spacer" />
 
         <button className="ss-submit-btn" onClick={handleSubmit}>
           Get Report

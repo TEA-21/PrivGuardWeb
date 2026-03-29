@@ -1,5 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { encryptAndSaveItem, loadAllEncryptedItems, deleteEncryptedItem, clearAllEncryptedItems } from '../utils/cryptoStorage';
+import { detectPII } from '../utils/piiDetector';
 import './GalleryScreen.css';
 
 // --- SVG ICON COMPONENTS ---
@@ -94,36 +96,87 @@ const MoreIcon = () => (
     <circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" />
   </svg>
 );
+const ShieldCheckIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 32, height: 32 }}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
+  </svg>
+);
+const WarningIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 24, height: 24 }}>
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
 
-// Default items mimicking initial data
-const DEFAULT_ITEMS = [
-  {
-    id: 1,
-    type: 'text',
-    title: 'Welcome Post',
-    text: 'Welcome to PrivGuard! Contact us at support@privguard.com or call (555) 123-4567.',
-  },
-  {
-    id: 5,
-    type: 'text',
-    title: 'Test Data',
-    text: 'My email is john.doe@example.com and my phone is +1-555-987-6543. I live at 123 Main Street.',
-  },
-];
+// ─── Inline PII Highlight Overlay ──────────────────────────────────────────
+function PiiHighlightOverlay({ text, entities }) {
+  if (!text || !entities || !entities.length) return <span>{text}</span>;
+
+  const sorted = [...entities]
+    .filter(e => e.index != null)
+    .sort((a, b) => a.index - b.index);
+
+  const parts = [];
+  let lastIdx = 0;
+
+  for (const entity of sorted) {
+    if (!entity) continue;
+    const start = parseInt(entity.index, 10);
+    if (isNaN(start)) continue;
+    const len = entity.value ? entity.value.length : (entity.masked ? entity.masked.length : 0);
+    if (len === 0) continue;
+    
+    const end = start + len;
+    if (start < lastIdx) continue; // Overlap
+
+    if (start > lastIdx) {
+      parts.push(<span key={`t-${lastIdx}`} className="pii-overlay-plain">{text.slice(lastIdx, start)}</span>);
+    }
+
+    parts.push(
+      <span key={`m-${start}`} className="pii-overlay-match" title={`${entity.type} [${entity.source || 'regex'}]`}>
+        <span className={`pii-overlay-text risk-${entity.risk || 'low'}`}>{text.slice(start, end)}</span>
+      </span>
+    );
+    lastIdx = end;
+  }
+
+  if (lastIdx < text.length) {
+    parts.push(<span key={`t-${lastIdx}`} className="pii-overlay-plain">{text.slice(lastIdx)}</span>);
+  }
+
+  return <div className="pii-overlay-container">{parts}</div>;
+}
+
+function getRiskColor(score) {
+  if (score >= 80) return '#DC2626';
+  if (score >= 60) return '#EF4444';
+  if (score >= 40) return '#F59E0B';
+  if (score >= 20) return '#10B981';
+  return '#059669';
+}
 
 function GalleryScreen() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const textPostRef = useRef(null);
 
-  const [mediaItems, setMediaItems] = useState(DEFAULT_ITEMS);
+  const [mediaItems, setMediaItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortAscending, setSortAscending] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [scanResults, setScanResults] = useState(null);
+  const [isScanningPII, setIsScanningPII] = useState(false);
   const [sheetItem, setSheetItem] = useState(null);
   const [toast, setToast] = useState(null);
   const [textPostDialog, setTextPostDialog] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+
+  // Load encrypted items on mount
+  useEffect(() => {
+    loadAllEncryptedItems().then(items => {
+      setMediaItems(items || []);
+    });
+  }, []);
 
   // Toast Helper
   const showToast = useCallback((msg) => {
@@ -157,6 +210,9 @@ function GalleryScreen() {
 
     try {
       const newItems = await Promise.all(filePromises);
+      for (const item of newItems) {
+        await encryptAndSaveItem(item.id, item);
+      }
       setMediaItems((prev) => [...prev, ...newItems]);
       showToast(`Added ${files.length} image${files.length > 1 ? 's' : ''}`);
     } catch (err) {
@@ -207,7 +263,7 @@ function GalleryScreen() {
     fileInputRef.current?.click();
   };
 
-  const submitTextPost = () => {
+  const submitTextPost = async () => {
     const text = textPostRef.current?.value?.trim();
     if (!text) {
       showToast('Please enter some text');
@@ -219,14 +275,24 @@ function GalleryScreen() {
       title: text.length > 20 ? text.substring(0, 20) + '...' : text,
       text,
     };
+    await encryptAndSaveItem(newPost.id, newPost);
     setMediaItems((prev) => [...prev, newPost]);
     setTextPostDialog(false);
     showToast('Text post created');
   };
 
+  const handleClearAll = () => {
+    if (window.confirm('Are you sure you want to clear all app data? This cannot be undone.')) {
+      clearAllEncryptedItems();
+      setMediaItems([]);
+      showToast('All app data cleared');
+    }
+  };
+
   // --- CRUD Handlers ---
   const handleDelete = (item) => {
     if (window.confirm(`Delete "${item.title}"?`)) {
+      deleteEncryptedItem(item.id);
       setMediaItems((prev) => prev.filter((i) => i.id !== item.id));
       setSelectedItem(null);
       setSheetItem(null);
@@ -234,40 +300,49 @@ function GalleryScreen() {
     }
   };
 
-  const handleEditCaption = (item) => {
+  const handleEditCaption = async (item) => {
     setSheetItem(null);
     const newCaption = prompt('Image caption:', item.caption || '');
     if (newCaption !== null) {
+      const updated = { ...item, caption: newCaption.trim() };
+      await encryptAndSaveItem(updated.id, updated);
       setMediaItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, caption: newCaption.trim() } : i))
+        prev.map((i) => (i.id === item.id ? updated : i))
       );
       showToast('Caption updated');
     }
   };
 
-  const handleEditText = (item) => {
+  const handleEditText = async (item) => {
     setSheetItem(null);
     const newText = prompt('Edit text post:', item.text || '');
     if (newText !== null && newText.trim()) {
-      setMediaItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id
-            ? {
-                ...i,
-                text: newText.trim(),
-                title: newText.trim().length > 20 ? newText.trim().substring(0, 20) + '...' : newText.trim(),
-              }
-            : i
-        )
-      );
+      const updated = {
+          ...item,
+          text: newText.trim(),
+          title: newText.trim().length > 20 ? newText.trim().substring(0, 20) + '...' : newText.trim(),
+      };
+      await encryptAndSaveItem(updated.id, updated);
+      setMediaItems((prev) => prev.map((i) => i.id === item.id ? updated : i));
       showToast('Text updated');
     }
   };
 
-  const handleScan = (item) => {
-    setSelectedItem(null);
+  const handleItemClick = async (item) => {
+    setSelectedItem(item);
     setSheetItem(null);
-    navigate('/scan-analysis', { state: { mediaItem: item } });
+    setScanResults(null);
+    
+    const textToScan = item.type === 'image' ? (item.caption || '') : (item.text || '');
+    if (!textToScan.trim()) {
+      setScanResults({ entities: [], riskScore: 0, riskLevel: 'Clean', suggestions: [] });
+      return;
+    }
+
+    setIsScanningPII(true);
+    const results = await detectPII(textToScan);
+    setScanResults(results);
+    setIsScanningPII(false);
   };
 
   return (
@@ -293,11 +368,11 @@ function GalleryScreen() {
           <button className="sort-btn" onClick={() => setSortAscending(!sortAscending)} title={sortAscending ? 'Sort Z→A' : 'Sort A→Z'}>
             {sortAscending ? <SortAscIcon /> : <SortDescIcon />}
           </button>
-          <button className="header-action-btn" onClick={handleUploadClick}>
-            <UploadIcon /> <span>Upload</span>
-          </button>
-          <button className="header-action-btn secondary" onClick={() => setTextPostDialog(true)}>
+          <button className="header-action-btn secondary" onClick={() => setTextPostDialog(true)} style={{ marginLeft: 8 }}>
             <TextPostIcon /> <span>New Post</span>
+          </button>
+          <button className="header-action-btn" onClick={handleClearAll} style={{ marginLeft: 8, background: '#FEF2F2', color: '#EF4444', borderColor: '#FCA5A5' }} title="Clear All Data">
+            <DeleteIcon />
           </button>
         </div>
       </div>
@@ -330,7 +405,7 @@ function GalleryScreen() {
               <div
                 key={item.id}
                 className="gallery-item"
-                onClick={() => setSelectedItem(item)}
+                onClick={() => handleItemClick(item)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setSheetItem(item);
@@ -371,24 +446,89 @@ function GalleryScreen() {
       {/* Full Preview Modal */}
       {selectedItem && (
         <div className="modal-overlay" onClick={() => setSelectedItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               {selectedItem.type === 'text' ? <TextIcon /> : <ImageIcon />}
               <span className="modal-header-title">{selectedItem.title}</span>
               <button className="modal-close-btn" onClick={() => setSelectedItem(null)}><CloseIcon /></button>
             </div>
-            <div className="modal-body">
-              {selectedItem.type === 'text' ? (
-                <div className="text-content-box">{selectedItem.text}</div>
-              ) : (
-                <img src={selectedItem.dataUrl} alt={selectedItem.title} className="modal-img-preview" />
-              )}
+            
+            <div className="modal-body split-view">
+              {/* Left side: Actual content */}
+              <div className="modal-content-left">
+                  {selectedItem.type === 'text' ? (
+                    <div className="text-content-box" style={{height: '100%', overflowY: 'auto'}}>
+                        {isScanningPII || !scanResults ? selectedItem.text : (
+                            <PiiHighlightOverlay text={selectedItem.text} entities={scanResults.entities} />
+                        )}
+                    </div>
+                  ) : (
+                    <div style={{display: 'flex', flexDirection: 'column', height: '100%'}}>
+                        <img src={selectedItem.dataUrl} alt={selectedItem.title} className="modal-img-preview" style={{objectFit: 'contain', maxHeight: '60vh'}} />
+                        {selectedItem.caption && (
+                            <div className="caption-box" style={{marginTop: 16, padding: 12, background: '#f8fafc', borderRadius: 8}}>
+                                {isScanningPII || !scanResults ? selectedItem.caption : (
+                                    <PiiHighlightOverlay text={selectedItem.caption} entities={scanResults.entities} />
+                                )}
+                            </div>
+                        )}
+                    </div>
+                  )}
+              </div>
+
+              {/* Right side: Scan Results */}
+              <div className="modal-content-right" style={{background: '#f8fafc', padding: 20, borderLeft: '1px solid #e2e8f0', minWidth: 350, overflowY: 'auto'}}>
+                  <h3 style={{marginTop: 0, marginBottom: 16}}>Privacy Risk Scan</h3>
+                  {isScanningPII ? (
+                      <div className="scan-loading" style={{display: 'flex', alignItems: 'center', gap: 10, color: '#64748b'}}>
+                          <span className="ss-btn-spinner" style={{ borderColor: 'rgba(12, 127, 242, 0.2)', borderTopColor: '#0C7FF2', width: 20, height: 20, borderWidth: 3 }} />
+                          <p>Scanning (Regex + AI)...</p>
+                      </div>
+                  ) : scanResults ? (
+                      <div className="scan-results-panel">
+                          <div className="ss-risk-badge" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, borderLeft: `4px solid ${getRiskColor(scanResults.riskScore)}`, marginBottom: 16 }}>
+                              <div className="ss-risk-score-circle" style={{ background: getRiskColor(scanResults.riskScore), width: 40, height: 40, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>
+                                {scanResults.riskScore}
+                              </div>
+                              <div className="ss-risk-info" style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span className="ss-risk-level" style={{ color: getRiskColor(scanResults.riskScore), fontWeight: 'bold' }}>
+                                  {scanResults.riskLevel} Risk
+                                </span>
+                                <span className="ss-risk-count" style={{ fontSize: 13, color: '#64748b' }}>
+                                  {scanResults.entities.length} item{scanResults.entities.length !== 1 ? 's' : ''} detected
+                                </span>
+                              </div>
+                          </div>
+
+                          {scanResults.entities.length > 0 ? (
+                              <div className="ss-pii-list" style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                                  {scanResults.entities.map((entity, i) => (
+                                      <div className="ss-pii-card" key={i} style={{background: '#fff', border: '1px solid #e2e8f0', padding: 12, borderRadius: 8}}>
+                                          <div className="ss-pii-body" style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span className="ss-pii-type" style={{fontWeight: 700, fontSize: 12, color: '#dc2626', textTransform: 'uppercase'}}>{entity.type}</span>
+                                                <span className={`source-tag`} style={{fontSize: 10, background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold', color: '#475569'}}>[{entity.source}]</span>
+                                            </div>
+                                            <code className="ss-pii-masked" style={{background: '#f1f5f9', padding: '2px 4px', borderRadius: 4, fontSize: 13}}>{entity.masked || entity.value}</code>
+                                            {entity.reason && <p className="entity-reason" style={{margin: 0, marginTop: 4, fontSize: 12, color: '#64748b'}}>{entity.reason}</p>}
+                                          </div>
+                                      </div>
+                                  ))}
+                              </div>
+                          ) : (
+                              <div className="ss-safe-card" style={{display: 'flex', alignItems: 'center', gap: 14, padding: 20, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 14, color: '#065f46'}}>
+                                <ShieldCheckIcon />
+                                <div>
+                                  <strong style={{display: 'block', fontSize: 16}}>✓ Clean</strong>
+                                  <p style={{margin: 0, fontSize: 13}}>No privacy risks detected.</p>
+                                </div>
+                              </div>
+                          )}
+                      </div>
+                  ) : null}
+              </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn-scan" onClick={() => handleScan(selectedItem)}>
-                <ScanIcon /> Scan for Risks
-              </button>
-            </div>
+            
           </div>
         </div>
       )}
@@ -399,7 +539,7 @@ function GalleryScreen() {
           <div className="bottom-sheet-overlay" onClick={() => setSheetItem(null)} />
           <div className="bottom-sheet">
             <div className="sheet-handle" />
-            <button className="sheet-option" onClick={() => handleScan(sheetItem)}>
+            <button className="sheet-option" onClick={() => { handleItemClick(sheetItem); setSheetItem(null); }}>
               <ScanIcon style={{ color: '#0c7ff2' }} />
               <div><h4>Scan</h4><p>Analyze for privacy leaks</p></div>
             </button>
