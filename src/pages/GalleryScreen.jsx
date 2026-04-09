@@ -397,7 +397,7 @@ function GalleryScreen() {
               </div>
 
               {/* Right side: Scan Results */}
-              <div className="modal-content-right" style={{background: '#f8fafc', padding: 20, borderLeft: '1px solid #e2e8f0', minWidth: 350, overflowY: 'auto'}}>
+              <div className="modal-content-right" style={{background: '#f8fafc', padding: 20, borderLeft: '1px solid #e2e8f0', minWidth: 550, overflowY: 'auto'}}>
                   <h3 style={{marginTop: 0, marginBottom: 16}}>Privacy Risk Scan</h3>
                   {isScanningPII ? (
                       <div className="scan-loading" style={{display: 'flex', alignItems: 'center', gap: 10, color: '#64748b'}}>
@@ -421,28 +421,54 @@ function GalleryScreen() {
                           </div>
 
                           {(scanResults.entities && scanResults.entities.length > 0) || scanResults.facesDetected > 0 ? (
-                              <div className="ss-pii-list" style={{display: 'flex', flexDirection: 'column', gap: 8}}>
-                                  
-                                  {/* Face Component Warning Output */}
-                                  {scanResults.facesDetected > 0 && (
-                                    <div className="face-warning" style={{background: '#fff0f2', border: '1px solid #ffe4e6', padding: 12, borderRadius: 8, color: '#e11d48', display: 'flex', alignItems: 'center', gap: 8}}>
-                                        <WarningIcon />
-                                        <strong style={{fontSize: 13}}>Warning: {scanResults.facesDetected} Human Face(s) natively mapped in image payload.</strong>
-                                    </div>
-                                  )}
+                              <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+                                  {/* Left Container: Detected Entities */}
+                                  <div className="ss-pii-list" style={{flex: 1, display: 'flex', flexDirection: 'column', gap: 8}}>
+                                      
+                                      {/* Face Component Warning Output */}
+                                      {scanResults.facesDetected > 0 && (
+                                        <div className="face-warning" style={{background: '#fff0f2', border: '1px solid #ffe4e6', padding: 12, borderRadius: 8, color: '#e11d48', display: 'flex', alignItems: 'center', gap: 8}}>
+                                            <WarningIcon />
+                                            <strong style={{fontSize: 13}}>Warning: {scanResults.facesDetected} Human Face(s) natively mapped in image payload.</strong>
+                                        </div>
+                                      )}
 
-                                  {scanResults.entities.map((entity, i) => (
-                                      <div className="ss-pii-card" key={i} style={{background: '#fff', border: '1px solid #e2e8f0', padding: 12, borderRadius: 8}}>
-                                          <div className="ss-pii-body" style={{display: 'flex', flexDirection: 'column', gap: 4}}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span className="ss-pii-type" style={{fontWeight: 700, fontSize: 12, color: '#dc2626', textTransform: 'uppercase'}}>{entity.type}</span>
-                                                <span className={`source-tag`} style={{fontSize: 10, background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold', color: '#475569'}}>[{entity.source}]</span>
-                                            </div>
-                                            <code className="ss-pii-masked" style={{background: '#f1f5f9', padding: '2px 4px', borderRadius: 4, fontSize: 13}}>{entity.masked || entity.value}</code>
-                                            {entity.reason && <p className="entity-reason" style={{margin: 0, marginTop: 4, fontSize: 12, color: '#64748b'}}>{entity.reason}</p>}
+                                      {scanResults.entities.map((entity, i) => (
+                                          <div className="ss-pii-card" key={i} style={{background: '#fff', border: '1px solid #e2e8f0', padding: 12, borderRadius: 8}}>
+                                              <div className="ss-pii-body" style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span className="ss-pii-type" style={{fontWeight: 700, fontSize: 12, color: '#dc2626', textTransform: 'uppercase'}}>{entity.type}</span>
+                                                    <span className={`source-tag`} style={{fontSize: 10, background: '#e2e8f0', padding: '2px 6px', borderRadius: 4, fontWeight: 'bold', color: '#475569'}}>[{entity.source}]</span>
+                                                </div>
+                                                <code className="ss-pii-masked" style={{background: '#f1f5f9', padding: '2px 4px', borderRadius: 4, fontSize: 13}}>{entity.masked || entity.value}</code>
+                                                {entity.reason && <p className="entity-reason" style={{margin: 0, marginTop: 4, fontSize: 12, color: '#64748b'}}>{entity.reason}</p>}
+                                              </div>
                                           </div>
+                                      ))}
+                                  </div>
+
+                                  {/* Right Container: Suggestions Table */}
+                                  {scanResults.suggestions && scanResults.suggestions.length > 0 && (
+                                      <div className="suggestions-section" style={{ flex: 1.2 }}>
+                                          <h4 style={{ marginTop: 0, marginBottom: 12, color: '#334155', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recommendations</h4>
+                                          <table className="suggestions-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, textAlign: 'left', background: '#fff', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                              <thead style={{ background: '#f8fafc', color: '#475569', borderBottom: '1px solid #e2e8f0' }}>
+                                                  <tr>
+                                                      <th style={{ padding: '8px 12px', width: '30px', fontWeight: 600 }}>#</th>
+                                                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Action</th>
+                                                  </tr>
+                                              </thead>
+                                              <tbody>
+                                                  {scanResults.suggestions.map((s, i) => (
+                                                      <tr key={i} style={{ borderBottom: i !== scanResults.suggestions.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
+                                                          <td style={{ padding: '10px 12px', color: '#64748b', verticalAlign: 'top', fontWeight: 500 }}>{i + 1}</td>
+                                                          <td style={{ padding: '10px 12px', color: '#334155', lineHeight: 1.5, verticalAlign: 'top' }}>{s}</td>
+                                                      </tr>
+                                                  ))}
+                                              </tbody>
+                                          </table>
                                       </div>
-                                  ))}
+                                  )}
                               </div>
                           ) : (
                               <div className="ss-safe-card" style={{display: 'flex', alignItems: 'center', gap: 14, padding: 20, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 14, color: '#065f46'}}>
