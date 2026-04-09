@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
-import { Shield, Image as ImageIcon, ScanSearch, BarChart3, ShieldCheck } from 'lucide-react';
+import { Shield, Image as ImageIcon, ScanSearch, ShieldCheck } from 'lucide-react';
 import GalleryScreen from './pages/GalleryScreen';
-import ScanAnalysisPage from './pages/ScanAnalysisPage';
 import SocialScannerPage from './pages/SocialScannerPage';
 import './App.css';
 
@@ -9,7 +8,6 @@ import './App.css';
 const NAV_ITEMS = [
   { path: '/',               label: 'Gallery',        Icon: ImageIcon   },
   { path: '/social-scanner', label: 'Social Scanner', Icon: ScanSearch  },
-  { path: '/scan-analysis',  label: 'Scan Analysis',  Icon: BarChart3   },
 ];
 
 // ── Top Navigation Bar (desktop) ────────────────────────────────────────────
@@ -92,7 +90,6 @@ function AppInner() {
       <main className="app-content" id="main-content">
         <Routes>
           <Route path="/"               element={<GalleryScreen />} />
-          <Route path="/scan-analysis"  element={<ScanAnalysisPage />} />
           <Route path="/social-scanner" element={<SocialScannerPage />} />
         </Routes>
       </main>

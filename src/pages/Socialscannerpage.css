@@ -9,7 +9,10 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
-  align-items: start;
+  /* FIX: stretch (default) makes both grid cells the same height.
+     Previously "start" let each card shrink to its own content height,
+     causing them to appear unequal. */
+  align-items: stretch;
   animation: fadeInUp 0.4s ease both;
 }
 
@@ -23,6 +26,10 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  /* FIX: height: 100% makes the card fill its grid cell completely,
+     so both cards are always the same height as the taller sibling. */
+  height: 100%;
+  box-sizing: border-box;
   transition: border-color var(--transition-base);
 }
 .ss-card-wrapper:hover { border-color: var(--border-default); }
