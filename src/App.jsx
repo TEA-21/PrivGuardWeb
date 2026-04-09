@@ -1,89 +1,104 @@
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { Shield, Image as ImageIcon, ScanSearch, BarChart3, ShieldCheck } from 'lucide-react';
 import GalleryScreen from './pages/GalleryScreen';
 import ScanAnalysisPage from './pages/ScanAnalysisPage';
 import SocialScannerPage from './pages/SocialScannerPage';
 import './App.css';
 
-// ── Logo Icon ──────────────────────────────────────────────────────────────
-const ShieldLogo = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-    strokeLinecap="round" strokeLinejoin="round" className="topnav-logo-icon">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    <polyline points="9 12 11 14 15 10" />
-  </svg>
-);
-
-// ── Nav link icons ─────────────────────────────────────────────────────────
-const GalleryNavIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-    strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <circle cx="8.5" cy="8.5" r="1.5" />
-    <polyline points="21 15 16 10 5 21" />
-  </svg>
-);
-const SocialNavIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-    strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-  </svg>
-);
-
 // ── Nav items config ────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { path: '/',               label: 'Gallery',        Icon: GalleryNavIcon },
-  { path: '/social-scanner', label: 'Social Scanner', Icon: SocialNavIcon  },
+  { path: '/',               label: 'Gallery',        Icon: ImageIcon   },
+  { path: '/social-scanner', label: 'Social Scanner', Icon: ScanSearch  },
+  { path: '/scan-analysis',  label: 'Scan Analysis',  Icon: BarChart3   },
 ];
 
-// ── Top Navigation Bar ─────────────────────────────────────────────────────
+// ── Top Navigation Bar (desktop) ────────────────────────────────────────────
 function TopNav() {
   const location = useLocation();
   const navigate = useNavigate();
 
   return (
-    <header className="topnav">
+    <header className="topnav" role="banner">
       <div className="topnav-inner">
         {/* Logo / Brand */}
-        <button className="topnav-brand" onClick={() => navigate('/')}>
-          <ShieldLogo />
+        <button className="topnav-brand" onClick={() => navigate('/')} aria-label="Go to Gallery">
+          <Shield className="topnav-logo-icon" />
           <span className="topnav-brand-text">PrivGuard</span>
         </button>
 
         {/* Nav Links */}
-        <nav className="topnav-links">
+        <nav className="topnav-links" aria-label="Main navigation">
           {NAV_ITEMS.map(({ path, label, Icon }) => {
-            const active = location.pathname === path;
+            const active = location.pathname === path ||
+              (path === '/' && location.pathname === '/');
             return (
               <button
                 key={path}
+                id={`nav-${label.toLowerCase().replace(/\s+/g, '-')}`}
                 className={`topnav-link${active ? ' active' : ''}`}
                 onClick={() => navigate(path)}
+                aria-current={active ? 'page' : undefined}
               >
-                <Icon />
+                <Icon aria-hidden="true" />
                 <span>{label}</span>
               </button>
             );
           })}
         </nav>
+
+        {/* Security Status Badge */}
+        <div className="topnav-security-badge" aria-label="Security status: Protected">
+          <ShieldCheck aria-hidden="true" />
+          Protected
+        </div>
       </div>
     </header>
   );
 }
 
-// ── Root App ───────────────────────────────────────────────────────────────
+// ── Bottom Navigation Bar (mobile) ──────────────────────────────────────────
+function BottomNav() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  return (
+    <nav className="bottom-nav" aria-label="Mobile navigation">
+      <div className="bottom-nav-inner">
+        {NAV_ITEMS.map(({ path, label, Icon }) => {
+          const active = location.pathname === path;
+          return (
+            <button
+              key={path}
+              id={`bottom-nav-${label.toLowerCase().replace(/\s+/g, '-')}`}
+              className={`bottom-nav-item${active ? ' active' : ''}`}
+              onClick={() => navigate(path)}
+              aria-current={active ? 'page' : undefined}
+            >
+              <Icon aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+// ── Root App ────────────────────────────────────────────────────────────────
 function AppInner() {
   return (
     <div className="app-root">
       <TopNav />
-      <main className="app-content">
+      <main className="app-content" id="main-content">
         <Routes>
           <Route path="/"               element={<GalleryScreen />} />
           <Route path="/scan-analysis"  element={<ScanAnalysisPage />} />
           <Route path="/social-scanner" element={<SocialScannerPage />} />
         </Routes>
       </main>
+      <BottomNav />
       <footer className="app-footer">
-        © 2026 PrivGuard — Your Privacy Guardian
+        © 2026 PrivGuard — Your Privacy Guardian · All data stays on your device
       </footer>
     </div>
   );

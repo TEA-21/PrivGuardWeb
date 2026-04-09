@@ -1,94 +1,28 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-
+import {
+  CloudUpload, Search, X, ArrowDownAZ, ArrowUpZA,
+  Image as ImageIcon, Type, Lock, PenLine,
+  ScanSearch, Trash2, ShieldCheck, AlertTriangle,
+} from 'lucide-react';
 import { encryptAndSaveItem, loadAllEncryptedItems, deleteEncryptedItem, clearAllEncryptedItems } from '../utils/cryptoStorage';
 import { detectPII, scanImageWithML } from '../utils/piiDetector';
 import './GalleryScreen.css';
 
-// --- SVG ICON COMPONENTS ---
-const CloudUploadIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
-    <path d="M12 12v9" /><path d="m16 16-4-4-4 4" />
-  </svg>
-);
-const SearchIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </svg>
-);
-const ClearIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-const SortAscIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 5h10" /><path d="M11 9h7" /><path d="M11 13h4" /><path d="M3 17l3 3 3-3" /><path d="M6 18V4" />
-  </svg>
-);
-const SortDescIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 5h4" /><path d="M11 9h7" /><path d="M11 13h10" /><path d="M3 17l3 3 3-3" /><path d="M6 18V4" />
-  </svg>
-);
-const GalleryEmptyIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
-  </svg>
-);
-const ImageIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
-  </svg>
-);
-const TextIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 7 4 4 20 4 20 7" /><line x1="9" y1="20" x2="15" y2="20" /><line x1="12" y1="4" x2="12" y2="20" />
-  </svg>
-);
-const LockIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-  </svg>
-);
-const UploadIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-  </svg>
-);
-
-const TextPostIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-  </svg>
-);
-
-const CloseIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-);
-const ScanIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><line x1="7" y1="12" x2="17" y2="12" />
-  </svg>
-);
-const DeleteIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-  </svg>
-);
-
-const ShieldCheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 32, height: 32 }}>
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><polyline points="9 12 11 14 15 10" />
-  </svg>
-);
-const WarningIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 24, height: 24 }}>
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
-);
+// Aliased for drop-in compatibility with JSX below
+const CloudUploadIcon = CloudUpload;
+const SearchIcon     = Search;
+const ClearIcon      = X;
+const SortAscIcon    = ArrowDownAZ;
+const SortDescIcon   = ArrowUpZA;
+const GalleryEmptyIcon = ImageIcon;
+const TextIcon       = Type;
+const LockIcon       = Lock;
+const TextPostIcon   = PenLine;
+const CloseIcon      = X;
+const ScanIcon       = ScanSearch;
+const DeleteIcon     = Trash2;
+const ShieldCheckIcon = ShieldCheck;
+const WarningIcon    = AlertTriangle;
 
 // ─── Inline PII Highlight Overlay ──────────────────────────────────────────
 export function PiiHighlightOverlay({ text, entities }) {
@@ -335,7 +269,7 @@ function GalleryScreen() {
     <div className="gallery-screen">
       {/* Header row: title + search + actions */}
       <div className="gallery-header">
-        <h1 className="gallery-title">Gallery</h1>
+        <h1 className="gallery-title">Secure <span>Gallery</span></h1>
         <div className="gallery-toolbar">
           <div className="gallery-search">
             <SearchIcon />
@@ -354,10 +288,10 @@ function GalleryScreen() {
           <button className="sort-btn" onClick={() => setSortAscending(!sortAscending)} title={sortAscending ? 'Sort Z→A' : 'Sort A→Z'}>
             {sortAscending ? <SortAscIcon /> : <SortDescIcon />}
           </button>
-          <button className="header-action-btn secondary" onClick={() => setTextPostDialog(true)} style={{ marginLeft: 8 }}>
+          <button className="header-action-btn" onClick={() => setTextPostDialog(true)}>
             <TextPostIcon /> <span>New Post</span>
           </button>
-          <button className="header-action-btn" onClick={handleClearAll} style={{ marginLeft: 8, background: '#FEF2F2', color: '#EF4444', borderColor: '#FCA5A5' }} title="Clear All Data">
+          <button className="header-action-btn danger" onClick={handleClearAll} title="Clear All Data">
             <DeleteIcon />
           </button>
         </div>
